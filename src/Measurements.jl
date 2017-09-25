@@ -58,6 +58,8 @@ function Measurement(val::V, err::E, tag::Float64,
     T = promote_type(V, E, D)
     return Measurement(T(val), T(err), tag, Derivatives{T}(der))
 end
+Measurement{T}(x::Measurement{S}) where {T,S} = convert(Measurement{T}, x)
+Measurement{T}(x::S) where {T,S} = measurement(x)
 
 # Functions to quickly create an empty Derivatives object.
 @generated empty_der1(x::Measurement{T}) where {T<:AbstractFloat} = Derivatives{T}()
@@ -114,8 +116,8 @@ function Base.show(io::IO, measure::Complex{<:Measurement})
 end
 # This is adapted from base/show.jl for Complex type.
 function Base.alignment(io::IO, measure::Measurement)
-    m = match(r"^(.*[\±])(.*)$", sprint(0, show, measure, env=io))
-    m === nothing ? (length(sprint(0, show, x, env=io)), 0) :
+    m = match(r"^(.*[\±])(.*)$", sprint(show, measure, context=io, sizehint=0))
+    m === nothing ? (length(sprint(show, measure, context=io, sizehint=0)), 0) :
         (length(m.captures[1]), length(m.captures[2]))
 end
 

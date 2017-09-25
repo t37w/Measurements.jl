@@ -168,8 +168,8 @@ macro uncertain(expr::Expr)
         argsval =:([])  # Build up the array of values of arguments
         [push!(argsval.args, :($(args.args[i]).val)) for i=1:n] # Fill the array
         return :( result($f($argsval...),
-                         (Calculus.gradient(x -> $f(x...), $argsval)...),
-                         ($args...)) )
+                         (Calculus.gradient(x -> $f(x...), $argsval)...,),
+                         ($args...,)) )
     end
 end
 
@@ -302,7 +302,7 @@ function Base.:^(a::Measurement,  b::Real)
     return result(x ^ b, b * x ^ (b - 1), a)
 end
 
-Base.:^(::Irrational{:e}, b::Measurement) = exp(b)
+Base.:^(::Irrational{:ℯ}, b::Measurement) = exp(b)
 
 function Base.:^(a::Real,  b::Measurement)
     res = a^b.val
@@ -357,15 +357,9 @@ end
 
 # Sincos: sincos
 
-# TODO: remove the `isdefined` when support for Julia 0.6 will be dropped.  Note: this
-# definition is not strictly needed, it's just for slightly better performance.
-if isdefined(Base, :sincos)
-    function Base.sincos(a::Measurement)
-        s, c = sincos(a.val)
-        return (result(s, c, a), result(c, -s, a))
-    end
-else
-    sincos(x::Real) = (sin(x), cos(x))
+function Base.sincos(a::Measurement)
+    s, c = sincos(a.val)
+    return (result(s, c, a), result(c, -s, a))
 end
 
 # Tangent: tan, tand, tanh
@@ -617,7 +611,7 @@ function Base.log1p(a::Measurement{T}) where {T<:AbstractFloat} # Special case
     return result(log1p(aval), inv(aval + one(T)), a)
 end
 
-Base.log(::Irrational{:e}, a::Measurement) = log(a)
+Base.log(::Irrational{:ℯ}, a::Measurement) = log(a)
 
 function Base.log(a::Real, b::Measurement{T}) where {T<:AbstractFloat}
     bval = b.val
@@ -953,9 +947,7 @@ Base.widen(::Type{Measurement{T}}) where {T<:AbstractFloat} = Measurement{widen(
 Base.big(::Type{Measurement}) = Measurement{BigFloat}
 Base.big(::Type{Measurement{T}}) where {T<:AbstractFloat} = Measurement{BigFloat}
 Base.big(x::Measurement{<:AbstractFloat}) = convert(Measurement{BigFloat}, x)
-# big(x::Complex{Measurement{<:AbstractFloat}}) doesn't seem to work on Julia 0.6.
-Base.big(x::Complex{Measurement{T}}) where {T<:AbstractFloat} =
-    convert(Complex{Measurement{BigFloat}}, x)
+Base.big(x::Complex{<:Measurement}) = convert(Complex{Measurement{BigFloat}}, x)
 
 # Sum and prod
 

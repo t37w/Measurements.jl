@@ -1,5 +1,5 @@
-using Measurements, SpecialFunctions
-using Base.Test
+using Measurements, SpecialFunctions, QuadGK, Calculus
+using Test, LinearAlgebra
 
 import Base: isapprox
 import Measurements: value, uncertainty
@@ -37,7 +37,7 @@ end
     @test iszero(@inferred(measurement(1)).err)
     @test @inferred(measurement(pi)).tag === NaN
     @test length(@inferred(measurement(4//5)).der) == 0
-    @test @inferred(measurement(catalan, big(0))).tag === NaN
+    @test @inferred(measurement(ℯ, big(0))).tag === NaN
     @test length(@inferred(measurement(7//3, 0)).der) == 0
     @test length(@inferred(measurement(4.7f0, 0.3)).der) == 1
     @test typeof(@inferred(measurement(1, big(0)))) == Measurement{BigFloat}
@@ -102,7 +102,7 @@ end
     @test 4 ± 0.2 == y ≠ 4 == 4 ± 0
     @test measurement(big"0.75", 0.01) == 3//4 ± 1//100
     @test measurement(big(π)) ≠ π
-    @test e ≠ measurement(Float32(e))
+    @test ℯ ≠ measurement(Float32(ℯ))
     @test 3//4 == measurement(Float32(0.75), Float32(0)) ≠ 4//3
     @test isnan(x) == false
     @test isfinite(y) == true && isfinite(measurement(Inf)) == false
@@ -224,7 +224,7 @@ end
         @test @inferred(a ^ 2) ≈ @inferred(a ^ 2.0)
         @test @inferred(a ^ (4//2)) ≈ @inferred(a * a) # correlation
         @test @inferred(2 ^ a) ≈ @inferred(2.0 ^ a)
-        @test @inferred(e ^ a) ≈ @inferred(exp(a))
+        @test @inferred(ℯ ^ a) ≈ @inferred(exp(a))
         @test @inferred(exp2(a)) ≈ @inferred(2 ^ a)
     end
     # Make sure "p ± 0" behaves like "p", in particular with regard to the
@@ -342,7 +342,7 @@ end
     @test @inferred(log(pi, x)) ≈ measurement(0.9597131185693899, 0.029118950894341064)
     @test @inferred(log(big(3), x)) == big(1) ± (x.err / (log(big(3)) * x.val))
     for a in (abs(w), x, y)
-        @test @inferred(log(e, a)) ≈ log(a)
+        @test @inferred(log(ℯ, a)) ≈ log(a)
         @test @inferred(log(2, a)) ≈ log2(a)
         @test @inferred(log(10, a)) ≈ log10(a)
         @test @inferred(log1p(a)) ≈ log(1 + a)
@@ -446,10 +446,10 @@ end
     for a in (w, x, y)
         @test beta(a, x) ≈ gamma(a)*gamma(x)/gamma(a + x)
         @test beta(a, pi) ≈ gamma(a)*gamma(pi)/gamma(a + pi)
-        @test beta(e, a) ≈ gamma(e)*gamma(a)/gamma(e + a)
+        @test beta(ℯ, a) ≈ gamma(ℯ)*gamma(a)/gamma(ℯ + a)
         @test lbeta(abs(a), x) ≈ log(beta(abs(a), x))
         @test lbeta(abs(a), pi) ≈ log(beta(abs(a), pi))
-        @test lbeta(e, abs(a)) ≈ log(beta(e, abs(a)))
+        @test lbeta(ℯ, abs(a)) ≈ log(beta(ℯ, abs(a)))
     end
 end
 
@@ -523,14 +523,14 @@ end
 
 @testset "Type representation" begin
     @test reprmime("text/plain", [w 10x; 100y 1000w]) ==
-        "2×2 Array{Measurements.Measurement{Float64},2}:\n  -0.5±0.03    30.0±1.0 \n 400.0±20.0  -500.0±30.0"
+        "2×2 Array{Measurement{Float64},2}:\n  -0.5±0.03    30.0±1.0 \n 400.0±20.0  -500.0±30.0"
     @test reprmime("text/plain", complex(x, w)) == "(3.0 ± 0.1) - (0.5 ± 0.03)im"
     @test reprmime("text/plain", complex(w, y)) == "(-0.5 ± 0.03) + (4.0 ± 0.2)im"
     @test reprmime("text/x-tex", y) == reprmime("text/x-latex", y) == "4.0 \\pm 0.2"
     @test Base.alignment(DevNull, x) == (5,4)
     # Make sure the printed representation of a Measurement object is correctly parsed as
     # the same number (note that the tag will be different, but that's not important here).
-    for a in (w, x, y); @test eval(parse(repr(a))) == a; end
+    for a in (w, x, y); @test eval(Meta.parse(repr(a))) == a; end
 end
 
 @testset "sum" begin
@@ -561,7 +561,7 @@ end
     @test @inferred(A * b) ≈ c
     @test @inferred(b ⋅ c) ≈ 7.423202614379084 ± 0.5981875954418516
     @test @inferred(det(A)) ≈ 612 ± 9.51262319236918
-    @test @inferred(A * inv(A)) ≈ eye(A)
+    @test @inferred(A * inv(A)) ≈ Matrix{eltype(A)}(I, size(A))
 end
 
 @testset "NaNs" begin
@@ -608,7 +608,7 @@ end
     end
     @testset "ccall" begin
         f(x) = x*x
-        ptr = cfunction(f, Cdouble, (Cdouble,))
+        ptr = cfunction(f, Cdouble, Tuple{Cdouble})
         g(x) = ccall(ptr, Cdouble, (Cdouble,), x)*x
         @test @uncertain(g(x)) ≈ x^3
     end
@@ -638,8 +638,7 @@ end
     for a in (w, x, y); @test big(x) ^ 2 - x * x ≈ zero(x); end
     @test Measurements.derivative(big(x) / 3 + x, x) ≈ inv(big(3)) + 1
     @test Measurements.derivative(big(x) + y, y) ≈ 1
-    # Enable following test when support for Julia 0.6 will be dropped.
-    @test_skip typeof(big(z)) == big(typeof(z))
+    @test typeof(big(z)) == big(typeof(z))
     a = big"3.00000001" ± big"1e-17"
     b = big"4.00000001" ± big"1e-17"
     c = big"5.00000001" ± big"1e-15"
